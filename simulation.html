@@ -11,9 +11,9 @@
 
 <meta name="author" content="Goh Gabriel" />
 
-<meta name="date" content="2024-10-11" />
+<meta name="date" content="2024-10-25" />
 
-<title>Why it is a bad idea to use the same variable for screening as well as the outcome</title>
+<title>Regression-to-Mean-Adjusted Group Comparison</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -350,10 +350,10 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">Why it is a bad idea to use the same
-variable for screening as well as the outcome</h1>
+<h1 class="title toc-ignore">Regression-to-Mean-Adjusted Group
+Comparison</h1>
 <h4 class="author">Goh Gabriel</h4>
-<h4 class="date">2024-10-11</h4>
+<h4 class="date">2024-10-25</h4>
 
 </div>
 
@@ -371,6 +371,13 @@ library(tidyr)
 library(ez)
 library(car)</code></pre>
 <pre><code>## Loading required package: carData</code></pre>
+<pre class="r"><code>library(lme4)</code></pre>
+<pre><code>## Loading required package: Matrix</code></pre>
+<pre><code>## 
+## Attaching package: &#39;Matrix&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:tidyr&#39;:
+## 
+##     expand, pack, unpack</code></pre>
 <pre class="r"><code># Set seed for reproducibility
 set.seed(123)
 
@@ -379,10 +386,10 @@ n &lt;- 1000  # Total sample size
 sd_cutoff &lt;- -1  # Standard deviation cutoff for screening
 effect_size &lt;- 0.2  # Effect size of the intervention
 reliability &lt;- 0.7  # Test-retest reliability</code></pre>
-<p>As the findings below show, a small effect size of 0.2 turns into an
-effect size of 0.82 for the intervention group, and even though the
+<p>As the findings below show, a small effect size of ~0.2 turns into an
+effect size of ~0.8 for the intervention group, and even though the
 control group was not simulated to have an effect size, it still has an
-observed effect size of 0.4.</p>
+observed effect size of ~0.4.</p>
 <p>Levene’s test, as well as the visual plots, suggest significant
 heterogeneity of variances.</p>
 <p>Under these circumstances, the parameters are likely to be highly
@@ -544,6 +551,417 @@ print(levene_test)</code></pre>
 ##       326                      
 ## ---
 ## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
+<p>With only two time points, we cannot fit a random slope for time
+(need at least 3). Also, obtaining effect sizes from a random effects
+model is non-trivial.</p>
+<pre class="r"><code># Fit random-effects model
+random_effects_model &lt;- lmer(score ~ time * group + (1|id), data = data_long)
+
+# Print model summary
+summary(random_effects_model)</code></pre>
+<pre><code>## Linear mixed model fit by REML [&#39;lmerMod&#39;]
+## Formula: score ~ time * group + (1 | id)
+##    Data: data_long
+## 
+## REML criterion at convergence: 523.3
+## 
+## Scaled residuals: 
+##      Min       1Q   Median       3Q      Max 
+## -2.66399 -0.57487 -0.02631  0.54601  2.58835 
+## 
+## Random effects:
+##  Groups   Name        Variance Std.Dev.
+##  id       (Intercept) 0.1306   0.3614  
+##  Residual             0.1748   0.4181  
+## Number of obs: 330, groups:  id, 165
+## 
+## Fixed effects:
+##                             Estimate Std. Error t value
+## (Intercept)                 -1.44860    0.05892 -24.587
+## timetime2                    0.24455    0.06304   3.879
+## groupIntervention           -0.06945    0.08625  -0.805
+## timetime2:groupIntervention  0.22342    0.09228   2.421
+## 
+## Correlation of Fixed Effects:
+##             (Intr) timtm2 grpInt
+## timetime2   -0.535              
+## grpIntrvntn -0.683  0.365       
+## tmtm2:grpIn  0.365 -0.683 -0.535</code></pre>
+<p>Change score effect size is still inflated (we expect it to be
+~0.2).</p>
+<pre class="r"><code># Calculate change scores
+data$change &lt;- data$time2 - data$time1
+
+# Fit linear model on change scores
+change_model &lt;- lm(change ~ group, data = data)
+
+# Print model summary
+print(summary(change_model))</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = change ~ group, data = data)
+## 
+## Residuals:
+##      Min       1Q   Median       3Q      Max 
+## -1.36244 -0.39714 -0.01223  0.40821  1.44006 
+## 
+## Coefficients:
+##                   Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)        0.24455    0.06304   3.879 0.000152 ***
+## groupIntervention  0.22342    0.09228   2.421 0.016565 *  
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## Residual standard error: 0.5913 on 163 degrees of freedom
+## Multiple R-squared:  0.03472,    Adjusted R-squared:  0.02879 
+## F-statistic: 5.862 on 1 and 163 DF,  p-value: 0.01657</code></pre>
+<pre class="r"><code># Calculate effect size
+cohens_d &lt;- coef(change_model)[&quot;groupIntervention&quot;] / sd(data$change)
+print(paste(&quot;Cohen&#39;s d:&quot;, cohens_d))</code></pre>
+<pre><code>## [1] &quot;Cohen&#39;s d: 0.372347219674974&quot;</code></pre>
+</div>
+<div id="using-a-hybrid-mee-chua-and-ancova-approach" class="section level2">
+<h2>Using a hybrid Mee-Chua and ANCOVA approach:</h2>
+<p>I recommend an analysis that extends Mee &amp; Chua’s (1991)
+regression-to-mean correction to compare groups while allowing for
+differential regression-to-mean effects between groups.</p>
+<ol style="list-style-type: decimal">
+<li>Using Mee-Chua’s framework to test if each group’s improvement
+exceeds regression to mean</li>
+<li>Employing ANCOVA-like modeling to estimate group differences and RTM
+interactions</li>
+<li>Calculating group effects while properly accounting for differential
+RTM patterns</li>
+<li>Where needed, using HC3 robust standard errors to handle potential
+heteroscedasticity</li>
+</ol>
+<p>Key advantages are that the approach tests each group’s improvement
+against regression to mean (Mee-Chua tests), compares groups while
+allowing for different RTM patterns (Group effect test), and maintains
+interpretability even with heterogeneous RTM effects.</p>
+<pre><code>Results show traditional analyses inflated effect sizes:
+- Intervention d = 0.8 (approx) (vs true 0.2)
+- Control d = 0.4 (approx) (vs true 0)
+- Change score analysis d = 0.38 (approx) (vs true 0.2)
+
+while this approach recovers the true effect size (0.221 ≈ 0.2)</code></pre>
+<pre class="r"><code># Gab&#39;s hybrid Mee-Chua analysis function with optional HC3 
+mee_chua_hybrid &lt;- function(test1, test2, group, population_mean, 
+                          include_interaction = TRUE,
+                          use_hc3 = FALSE,  
+                          group_labels = c(&quot;control&quot;, &quot;intervention&quot;),
+                          alpha = 0.05) {
+  # validating inputs
+  if (length(test1) != length(test2) || length(test1) != length(group)) {
+    stop(&quot;test1, test2, and group must have the same length&quot;)
+  }
+  
+  if (!is.numeric(population_mean)) {
+    stop(&quot;population_mean must be numeric&quot;)
+  }
+  
+  # load sandwich package if HC3 is requested
+  if (use_hc3 &amp;&amp; !requireNamespace(&quot;sandwich&quot;, quietly = TRUE)) {
+    stop(&quot;Package &#39;sandwich&#39; is needed for HC3 standard errors. Please install it.&quot;)
+  }
+  
+  # create the data frame for analysis
+  data &lt;- data.frame(
+    Y1 = test1,
+    Y2 = test2,
+    group = factor(group, levels = group_labels)
+  )
+  
+  # center Y1 around population mean
+  data$X &lt;- data$Y1 - population_mean
+  
+  # create group dummy (0=control, 1=intervention)
+  data$G &lt;- as.numeric(data$group) - 1
+  
+  # create interaction term for regression-to-the-mean differences
+  data$GX &lt;- data$G * data$X
+  
+  # fit models
+  if(include_interaction) {
+    model &lt;- lm(Y2 ~ G + X + GX, data = data)
+  } else {
+    model &lt;- lm(Y2 ~ G + X, data = data)
+  }
+  
+  # calculate the appropriate variance-covariance matrix
+  if(use_hc3) {
+    vcov_matrix &lt;- sandwich::vcovHC(model, type = &quot;HC3&quot;)
+  } else {
+    vcov_matrix &lt;- vcov(model)
+  }
+  
+  # extract coefficients and MSE
+  coef_summary &lt;- summary(model)$coefficients
+  mse &lt;- summary(model)$sigma^2
+  
+  # calculate components for Mee-Chua t-statistics
+  n_control &lt;- sum(data$G == 0)
+  n_intervention &lt;- sum(data$G == 1)
+  X_bar_control &lt;- mean(data$X[data$G == 0])
+  X_bar_intervention &lt;- mean(data$X[data$G == 1])
+  SS_X_control &lt;- sum((data$X[data$G == 0] - X_bar_control)^2)
+  SS_X_intervention &lt;- sum((data$X[data$G == 1] - X_bar_intervention)^2)
+  
+  # writing a function to calculate Mee-Chua t-statistic for control group
+  mc_t_stat_control &lt;- function(beta, mu) {
+    (beta - mu) / sqrt(mse * (1/n_control + X_bar_control^2/SS_X_control))
+  }
+  
+  # writing a function to calculate Mee-Chua t-statistic for intervention group
+  mc_t_stat_intervention &lt;- function(beta, mu) {
+    (beta - mu) / sqrt(mse * (1/n_intervention + X_bar_intervention^2/SS_X_intervention))
+  }
+  
+  # calculate t-statistics and p-values for control group
+  beta0_control &lt;- coef_summary[&quot;(Intercept)&quot;, &quot;Estimate&quot;]
+  t_control &lt;- mc_t_stat_control(beta0_control, population_mean)
+  p_control &lt;- pt(t_control, df = model$df.residual, lower.tail = FALSE)
+  
+  # calculate effects for intervention group
+  beta_group &lt;- coef_summary[&quot;G&quot;, &quot;Estimate&quot;]
+  beta0_intervention &lt;- beta0_control + beta_group
+  beta_p_control &lt;- coef_summary[&quot;X&quot;, &quot;Estimate&quot;]
+  
+  # calculate t-statistics and p-values for intervention group
+  t_intervention &lt;- mc_t_stat_intervention(beta0_intervention, population_mean)
+  p_intervention &lt;- pt(t_intervention, df = model$df.residual, lower.tail = FALSE)
+  
+  if(include_interaction) {
+    beta_interaction &lt;- coef_summary[&quot;GX&quot;, &quot;Estimate&quot;]
+    beta_p_intervention &lt;- beta_p_control + beta_interaction
+    
+    # grab the HC3 (or standard) t-stat and p-value for interaction
+    se_interaction &lt;- sqrt(vcov_matrix[&quot;GX&quot;, &quot;GX&quot;])
+    t_interaction &lt;- beta_interaction / se_interaction
+    p_interaction &lt;- 2 * pt(abs(t_interaction), df = model$df.residual, 
+                           lower.tail = FALSE)
+  } else {
+    beta_interaction &lt;- 0
+    beta_p_intervention &lt;- beta_p_control
+    t_interaction &lt;- NA
+    p_interaction &lt;- NA
+  }
+  
+  # calculate group difference at mean of X with appropriate SE, accounting for regression-to-the-mean
+  group_diff_at_mean &lt;- beta_group + beta_interaction * X_bar_control
+  
+  # calculate the standard error for group difference using selected vcov matrix
+  se_group_diff &lt;- sqrt(
+    vcov_matrix[&quot;G&quot;, &quot;G&quot;] + 
+    X_bar_control^2 * vcov_matrix[&quot;GX&quot;, &quot;GX&quot;] + 
+    2 * X_bar_control * vcov_matrix[&quot;G&quot;, &quot;GX&quot;]
+  )
+  
+  # t-statistic and p-value for group difference
+  t_group_diff &lt;- group_diff_at_mean / se_group_diff
+  p_group_diff &lt;- 2 * pt(abs(t_group_diff), df = model$df.residual, 
+                         lower.tail = FALSE)
+  
+  # calculate 95% confidence intervals
+  # we use the original Mee-Chua CI for control intercept
+  ci_control &lt;- beta0_control + 
+    qt(c(alpha/2, 1-alpha/2), model$df.residual) * 
+    sqrt(mse * (1/n_control + X_bar_control^2/SS_X_control))
+  names(ci_control) &lt;- c(&quot;lower&quot;, &quot;upper&quot;)
+  
+  # also use Mee-Chua CI for intervention intercept
+  ci_intervention &lt;- beta0_intervention + 
+    qt(c(alpha/2, 1-alpha/2), model$df.residual) * 
+    sqrt(mse * (1/n_intervention + X_bar_intervention^2/SS_X_intervention))
+  names(ci_intervention) &lt;- c(&quot;lower&quot;, &quot;upper&quot;)
+  
+  # we calculate a hc3 CI for group difference by using the hc3 SE
+  ci_group_diff &lt;- group_diff_at_mean + 
+    qt(c(alpha/2, 1-alpha/2), model$df.residual) * se_group_diff
+  names(ci_group_diff) &lt;- c(&quot;lower&quot;, &quot;upper&quot;)
+  
+  # create results list
+  results &lt;- list(
+    control = list(
+      beta0 = beta0_control,
+      beta_p = beta_p_control,
+      t_stat = t_control,
+      p_value = p_control,
+      ci = ci_control
+    ),
+    intervention = list(
+      beta0 = beta0_intervention,
+      beta_p = beta_p_intervention,
+      t_stat = t_intervention,
+      p_value = p_intervention,
+      ci = ci_intervention
+    ),
+    group_effect = list(
+      estimate = group_diff_at_mean,
+      se = se_group_diff,
+      t_stat = t_group_diff,
+      p_value = p_group_diff,
+      ci = ci_group_diff
+    ),
+    interaction = if(include_interaction) list(
+      estimate = beta_interaction,
+      se = se_interaction,
+      t_stat = t_interaction,
+      p_value = p_interaction
+    ) else NULL,
+    model = model,
+    population_mean = population_mean,
+    alpha = alpha,
+    group_labels = group_labels,
+    include_interaction = include_interaction,
+    use_hc3 = use_hc3
+  )
+  
+  class(results) &lt;- &quot;mee_chua_hybrid&quot;
+  return(results)
+}
+
+# print method to show tests for both groups
+print.mee_chua_hybrid &lt;- function(x, ...) {
+  cat(&quot;\nMee-Chua corrections&quot;, if(x$use_hc3) &quot;with HC3 robust SEs\n&quot; else &quot;\n&quot;)
+  cat(&quot;\nPopulation mean:&quot;, x$population_mean, &quot;\n&quot;)
+  
+  # control group results
+  cat(&quot;\nControl Group (&quot;, x$group_labels[1], &quot;):\n&quot;, sep=&quot;&quot;)
+  cat(&quot;β₀ =&quot;, round(x$control$beta0, 3), &quot;\n&quot;)
+  cat(&quot;βp =&quot;, round(x$control$beta_p, 3), &quot;\n&quot;)
+  cat(&quot;H₀: β₀ = μ vs H₁: β₀ &gt; μ\n&quot;)
+  cat(&quot;t =&quot;, round(x$control$t_stat, 3),
+      &quot;p =&quot;, format.pval(x$control$p_value), &quot;\n&quot;)
+  cat(paste0((1-x$alpha)*100, &quot;% CI for β₀: [&quot;,
+             round(x$control$ci[&quot;lower&quot;], 3), &quot;, &quot;,
+             round(x$control$ci[&quot;upper&quot;], 3), &quot;]\n&quot;))
+  
+  # intervention group results
+  cat(&quot;\nIntervention Group (&quot;, x$group_labels[2], &quot;):\n&quot;, sep=&quot;&quot;)
+  cat(&quot;β₀ =&quot;, round(x$intervention$beta0, 3), &quot;\n&quot;)
+  cat(&quot;βp =&quot;, round(x$intervention$beta_p, 3), &quot;\n&quot;)
+  cat(&quot;H₀: β₀ = μ vs H₁: β₀ &gt; μ\n&quot;)
+  cat(&quot;t =&quot;, round(x$intervention$t_stat, 3),
+      &quot;p =&quot;, format.pval(x$intervention$p_value), &quot;\n&quot;)
+  cat(paste0((1-x$alpha)*100, &quot;% CI for β₀: [&quot;,
+             round(x$intervention$ci[&quot;lower&quot;], 3), &quot;, &quot;,
+             round(x$intervention$ci[&quot;upper&quot;], 3), &quot;]\n&quot;))
+  
+  # group effect (difference at mean of X)
+  cat(&quot;\nGroup Effect (Intervention - Control) at mean of X:\n&quot;)
+  cat(&quot;Estimate =&quot;, round(x$group_effect$estimate, 3), &quot;\n&quot;)
+  cat(&quot;SE =&quot;, round(x$group_effect$se, 3), &quot;\n&quot;)
+  cat(&quot;t =&quot;, round(x$group_effect$t_stat, 3),
+      &quot;p =&quot;, format.pval(x$group_effect$p_value), &quot;\n&quot;)
+  cat(paste0((1-x$alpha)*100, &quot;% CI: [&quot;,
+             round(x$group_effect$ci[&quot;lower&quot;], 3), &quot;, &quot;,
+             round(x$group_effect$ci[&quot;upper&quot;], 3), &quot;]\n&quot;))
+  
+  # interaction effect if included
+  if(x$include_interaction) {
+    cat(&quot;\nDifference in regression-to-the-mean (βint):\n&quot;)
+    cat(&quot;Estimate =&quot;, round(x$interaction$estimate, 3), &quot;\n&quot;)
+    cat(&quot;SE =&quot;, round(x$interaction$se, 3), &quot;\n&quot;)
+    cat(&quot;t =&quot;, round(x$interaction$t_stat, 3),
+        &quot;p =&quot;, format.pval(x$interaction$p_value), &quot;\n&quot;)
+  }
+  cat(&quot;\n&quot;)
+}</code></pre>
+<p>Using an ANCOVA (including Mee and Chua’s recommended tests for the
+group intercepts), we were able to recover the true effect size (≈ 0.2),
+while the earlier analyses showed inflated effects:</p>
+<pre class="r"><code># First prepare the data in the format needed for mee_chua_hybrid
+# We need test1, test2, group, and population_mean
+
+# Let&#39;s use it with both standard and HC3 versions
+results_standard &lt;- mee_chua_hybrid(
+    test1 = data$time1,
+    test2 = data$time2,
+    group = data$group,
+    population_mean = 0,  # Original population mean was 0
+    include_interaction = TRUE,
+    use_hc3 = FALSE,
+    group_labels = c(&quot;Control&quot;, &quot;Intervention&quot;)
+)
+
+results_hc3 &lt;- mee_chua_hybrid(
+    test1 = data$time1,
+    test2 = data$time2,
+    group = data$group,
+    population_mean = 0,
+    include_interaction = TRUE,
+    use_hc3 = TRUE,
+    group_labels = c(&quot;Control&quot;, &quot;Intervention&quot;)
+)
+
+# Print both results
+cat(&quot;\nStandard Analysis:\n&quot;)</code></pre>
+<pre><code>## 
+## Standard Analysis:</code></pre>
+<pre class="r"><code>print(results_standard)</code></pre>
+<pre><code>## 
+## Mee-Chua corrections 
+## 
+## Population mean: 0 
+## 
+## Control Group (Control):
+## β₀ = -0.211 
+## βp = 0.685 
+## H₀: β₀ = μ vs H₁: β₀ &gt; μ
+## t = -0.864 p = 0.80566 
+## 95% CI for β₀: [-0.694, 0.271]
+## 
+## Intervention Group (Intervention):
+## β₀ = 0.411 
+## βp = 0.963 
+## H₀: β₀ = μ vs H₁: β₀ &gt; μ
+## t = 1.595 p = 0.056286 
+## 95% CI for β₀: [-0.098, 0.921]
+## 
+## Group Effect (Intervention - Control) at mean of X:
+## Estimate = 0.221 
+## SE = 0.092 
+## t = 2.388 p = 0.018105 
+## 95% CI: [0.038, 0.403]
+## 
+## Difference in regression-to-the-mean (βint):
+## Estimate = 0.277 
+## SE = 0.231 
+## t = 1.199 p = 0.23217</code></pre>
+<pre class="r"><code>cat(&quot;\nHC3 Robust Analysis:\n&quot;)</code></pre>
+<pre><code>## 
+## HC3 Robust Analysis:</code></pre>
+<pre class="r"><code>print(results_hc3)</code></pre>
+<pre><code>## 
+## Mee-Chua corrections with HC3 robust SEs
+## 
+## Population mean: 0 
+## 
+## Control Group (Control):
+## β₀ = -0.211 
+## βp = 0.685 
+## H₀: β₀ = μ vs H₁: β₀ &gt; μ
+## t = -0.864 p = 0.80566 
+## 95% CI for β₀: [-0.694, 0.271]
+## 
+## Intervention Group (Intervention):
+## β₀ = 0.411 
+## βp = 0.963 
+## H₀: β₀ = μ vs H₁: β₀ &gt; μ
+## t = 1.595 p = 0.056286 
+## 95% CI for β₀: [-0.098, 0.921]
+## 
+## Group Effect (Intervention - Control) at mean of X:
+## Estimate = 0.221 
+## SE = 0.093 
+## t = 2.381 p = 0.018435 
+## 95% CI: [0.038, 0.404]
+## 
+## Difference in regression-to-the-mean (βint):
+## Estimate = 0.277 
+## SE = 0.232 
+## t = 1.196 p = 0.2334</code></pre>
 </div>
 
 
